@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+    <meta charset="UTF-8">
+    <title>WorksPlus OS | Control Center</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        :root { --bg: #0f172a; --card: #0b1120; --accent: #38bdf8; --text: #f8fafc; }
+        body { font-family: sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; height: 100vh; overflow: hidden; }
+        .sidebar { width: 350px; background: var(--card); border-left: 1px solid #1e293b; display: flex; flex-direction: column; }
+        .header { padding: 25px; background: #1e293b; border-bottom: 2px solid var(--accent); }
+        .wa-profile { background: #334155; padding: 10px; border-radius: 8px; margin-top: 10px; font-size: 14px; border-right: 4px solid #00e676; }
+        .chat-list { flex: 1; overflow-y: auto; }
+        .chat-item { padding: 15px; border-bottom: 1px solid #1e293b; cursor: pointer; transition: 0.2s; }
+        .chat-item:hover { background: #1e293b; }
+        .main { flex: 1; display: flex; flex-direction: column; background: #0b1120; }
+        .chat-window { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column-reverse; background: #0f172a; border-radius: 20px 20px 0 0; }
+        .msg-bubble { max-width: 75%; padding: 10px 15px; border-radius: 12px; margin-bottom: 8px; font-size: 15px; line-height: 1.4; }
+        .msg-me { align-self: flex-start; background: #056162; color: white; border-top-left-radius: 2px; }
+        .msg-them { align-self: flex-end; background: #262d31; color: white; border-top-right-radius: 2px; }
+        .input-area { padding: 15px 25px; background: #1e293b; display: flex; gap: 10px; }
+        input { flex: 1; padding: 12px; border-radius: 20px; border: none; background: #2a3942; color: white; outline: none; }
+        .send-btn { background: var(--accent); border: none; width: 45px; height: 45px; border-radius: 50%; cursor: pointer; font-size: 20px; }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="header">
+            <h2 style="margin:0; color:var(--accent);">WorksPlus OS</h2>
+            <div id="profile-area" class="wa-profile" style="display:none;">
+                <span id="wa-display-name" style="font-weight:bold; color:#00e676;"></span>
+            </div>
+            <div id="main-status" style="font-size:12px; margin-top:5px; color:#94a3b8;">מתחבר לענן...</div>
+        </div>
+        <div class="chat-list" id="chat-list"></div>
+    </div>
+
+    <div class="main">
+        <div id="qr-box" style="text-align:center; padding:50px; display:none;"></div>
+        <div class="chat-window" id="chat-window"></div>
+        <div class="input-area">
+            <input id="target-id" type="hidden">
+            <input id="msg-input" placeholder="בחר צ'אט והקלד..." onkeypress="if(event.key==='Enter') send()">
+            <button class="send-btn" onclick="send()">✈</button>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const user = location.pathname === "/" ? "shlomo" : "shlomo"; // מנגנון זיהוי פשוט
+        socket.emit('join', user);
+
+        socket.on('status_update', data => {
+            if(data.connected) {
+                document.getElementById('main-status').innerHTML = "● מחובר: " + data.number;
+                document.getElementById('profile-area').style.display = "block";
+                document.getElementById('wa-display-name').innerText = "זהות: " + data.waName;
+                document.getElementById('qr-box').style.display = "none";
+            }
+        });
+
+        socket.on('qr_update', url => {
+            const qrBox = document.getElementById('qr-box');
+            qrBox.style.display = "block";
+            qrBox.innerHTML = `<h3>סרוק לחיבור:</h3><img src="${url}" width="230" style="background:white;padding:10px;border-radius:10px;">`;
+        });
+
+        socket.on('load_chats', chats => {
+            document.getElementById('chat-list').innerHTML = chats.map(c => `
+                <div class="chat-item" onclick="openChat('${c.id}', '${c.name}')">
+                    <strong>${c.name}</strong><br>
+                    <small style="color:#94a3b8">${c.last ? c.last.substring(0,30) : 'אין הודעות'}</small>
+                </div>
+            `).join('');
+        });
+
+        function openChat(id, name) {
+            document.getElementById('target-id').value = id;
+            document.getElementById('chat-window').innerHTML = "<p style='text-align:center;'>טוען הודעות...</p>";
+            socket.emit('get_history', { user, chatId: id });
+        }
+
+        socket.on('load_history', msgs => {
+            const win = document.getElementById('chat-window');
+            win.innerHTML = "";
+            msgs.reverse().forEach(m => {
+                const div = document.createElement('div');
+                div.className = `msg-bubble ${m.fromMe ? 'msg-me' : 'msg-them'}`;
+                div.innerText = m.body;
+                win.prepend(div);
+            });
+        });
+
+        function send() {
+            const to = document.getElementById('target-id').value;
+            const b = document.getElementById('msg-input').value;
+            if(!to || !b) return;
+            socket.emit('send_msg', { user, to, body: b });
+            const div = document.createElement('div');
+            div.className = 'msg-bubble msg-me';
+            div.innerText = b;
+            document.getElementById('chat-window').prepend(div);
+            document.getElementById('msg-input').value = "";
+        }
+    </script>
+</body>
+</html>
